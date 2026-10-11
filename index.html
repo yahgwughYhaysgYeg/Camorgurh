@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>Remote Control</title>
+<style>
+body{background:#111;color:#0f0;font-family:monospace;padding:15px}
+button,input{padding:8px;margin:3px;background:#222;color:#0f0;border:1px solid #0f0}
+#screen{border:2px solid #0f0;max-width:100%;cursor:crosshair}
+#log{white-space:pre-wrap;background:#000;border:1px solid #0f0;padding:10px;height:180px;overflow-y:scroll;margin-top:10px}
+.row{display:flex;flex-wrap:wrap;gap:5px}
+</style>
+</head>
+<body>
+<h2>📱 Remote Device Control</h2>
+<input id="aid" placeholder="Agent ID" style="width:120px">
+<button onclick="location.reload()">تحميل الوكلاء</button>
+
+<div class="row">
+  <button onclick="cmd('input keyevent KEYCODE_POWER')">قفل/شاشة</button>
+  <button onclick="cmd('input keyevent KEYCODE_HOME')">🏠</button>
+  <button onclick="cmd('input keyevent KEYCODE_BACK')">⬅ رجوع</button>
+  <button onclick="cmd('input keyevent KEYCODE_APP_SWITCH')">📐 تطبيقات</button>
+  <button onclick="cmd('input keyevent KEYCODE_VOLUME_UP')">🔊+</button>
+  <button onclick="cmd('input keyevent KEYCODE_VOLUME_DOWN')">🔉-</button>
+</div>
+
+<div class="row">
+  <input id="txt" placeholder="نص للكتابة" style="width:45%">
+  <button onclick="cmd('input text '+encodeURIComponent(txt.value))">✍ اكتب</button>
+  <button onclick="cmd('input keyevent 66')">Enter</button>
+</div>
+
+<div class="row">
+  <input id="shell" placeholder="أمر shell: pm list packages" style="width:60%">
+  <button onclick="cmd(shell.value)">▶ نفّذ</button>
+</div>
+
+<hr>
+<img id="screen" onclick="tap(event)">
+<div id="log"></div>
+
+<script>
+const API = "https://YOUR-APP.onrender.com";
+const H = {"X-Key": "ضع-توكن-سرّي-هنا"};
+
+// أحسب أبعاد الشاشة الحقيقية مرة واحدة
+let W = 1080, HGT = 2400;
+async function init(){
+  if(!aid.value) return alert("اكتب Agent ID");
+  await fetch(`${API}/send/${aid.value}/wm%20size`, {headers:H});
+  setTimeout(async ()=>{
+    const r = await (await fetch(`${API}/results/${aid.value}`,{headers:H})).json();
+    const line = (r[r.length-1]?.out||"").split("\n").find(l=>l.startsWith("Physical"));
+    if(line){ [W,HGT] = line.replace("Physical:","").trim().split("x").map(Number); }
+  }, 3000);
+  loopScreen();
+}
+
+async function loopScreen(){
+  try{
+    const r = await (await fetch(`${API}/screen/${aid.value}`,{headers:H})).json();
+    if(r.b64) screen.src = "data:image/png;base64,"+r.b64;
+  }catch(e){}
+  setTimeout(loopScreen, 800);
+}
+
+async function cmd(c){
+  await fetch(`${API}/send/${aid.value}/${encodeURIComponent(c)}`, {headers:H});
+  log.textContent += "> "+c+"\n";
+  setTimeout(async ()=>{
+    const r = await (await fetch(`${API}/results/${aid.value}`,{headers:H})).json();
+    r.forEach(x=>{ if(x.out) log.textContent += x.out+"\n"; });
+    log.scrollTop = log.scrollHeight;
+  }, 2500);
+}
+
+function tap(e){
+  const rect = screen.getBoundingClientRect();
+  const x = Math.round((e.clientX-rect.left)/rect.width*W);
+  const y = Math.round((e.clientY-rect.top)/rect.height*HGT);
+  cmd(`input tap ${x} ${y}`);
+  log.textContent += `tap(${x},${y})\n`;
+}
+
+// أسحب للتمرير (swipe) — اسحب على الشاشة مع Shift مضغوط، أو استخدم عجلة الفأرة
+screen.addEventListener("wheel", e=>{
+  const y = Math.round(HGT/2);
+  const dir = e.deltaY > 0 ? 500 : -500;
+  cmd(`input swipe ${W/2} ${y} ${W/2} ${y+dir} 200`);
+});
+</script>
+</body>
+</html>
